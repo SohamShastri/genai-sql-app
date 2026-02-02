@@ -3,6 +3,7 @@ import sqlite3
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
@@ -12,6 +13,13 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel("models/gemini-2.5-flash")
 
 app = FastAPI(title="GenAI SQL Chatbot (Gemini)")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # React dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def get_sales_data():
     conn = sqlite3.connect("data.db")
@@ -32,10 +40,18 @@ async def chat(body: dict = Body(...)):
     data_text = "\n".join([f"{d['month']}: {d['revenue']}" for d in data])
 
     prompt = f"""
-Analyze this sales data:
+You are a friendly, conversational data assistant.
+
+Sales data:
 {data_text}
 
-User question:
+Conversation rules:
+- Be concise by default.
+- Only give detailed analysis if the user asks for it.
+- If the user says thanks or ok, reply naturally.
+- Do not repeat the full report unless requested.
+
+User message:
 {user_msg}
 """
 
