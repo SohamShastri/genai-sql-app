@@ -6,7 +6,7 @@ import google.generativeai as genai
 
 load_dotenv()
 
-print("GEMINI KEY:", os.getenv("AIzaSyBYqgo92PT32WfudCscvSi7AjStqvvo_JU"))
+
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 model = genai.GenerativeModel("models/gemini-2.5-flash")
