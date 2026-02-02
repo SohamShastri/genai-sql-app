@@ -1,0 +1,1 @@
+print("GenAI SQL App starting point")
