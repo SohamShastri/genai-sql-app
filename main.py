@@ -1,8 +1,15 @@
 from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
 
 app = FastAPI(title="GenAI SQL Chatbot")
+load_dotenv()
+
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,10 +54,36 @@ async def upload(file: UploadFile = File(...)):
 # ---- chat endpoint (TEMP, no Gemini yet) ----
 @app.post("/chat")
 async def chat(body: dict = Body(...)):
+    user_msg = body.get("message")
+    if not user_msg:
+        return {"reply": "Please ask something about the dataset."}
+
     if active_dataframe is None:
         return {"reply": "No dataset uploaded yet."}
 
     df = active_dataframe
-    summary = f"Dataset has {len(df)} rows and {len(df.columns)} columns."
+    data_text = df.head(20).to_string(index=False)
 
-    return {"reply": summary}
+    prompt = f"""
+You are a friendly data assistant.
+
+Here is a sample of the dataset:
+{data_text}
+
+User question:
+{user_msg}
+
+Answer clearly and concisely.
+Do not make the Answer lenghtier than necessary.
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        return {"reply": response.text}
+    except Exception:
+        return {
+            "reply": (
+                "⚠️ AI is temporarily unavailable due to rate limits.\n"
+                "Your dataset is loaded correctly. Please retry in a minute."
+            )
+        }
