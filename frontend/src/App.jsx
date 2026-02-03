@@ -1,16 +1,55 @@
 import { useState } from "react";
 import "./index.css";
 
-function App() {
+
+function App(
+) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadStatus,  setUploadStatus] = useState(""); 
+
+  async function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch("http://localhost:8000/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+
+    if (data.error) {
+      setUploadStatus(`❌ ${data.error}`);
+    } else {
+      setUploadStatus(
+        `✅ Using uploaded dataset: ${file.name} (${data.rows} rows)`
+      );
+    }
+  } catch (err) {
+    setUploadStatus("❌ Upload failed");
+  }
+}
+
+
 
   return (
     <div className="app">
       <header className="header">
         <h2>GenAI SQL Chatbot</h2>
         <p>Ask questions about your data (upload your files)</p>
+        <input
+  type="file"
+  accept=".csv,.xlsx"
+  onChange={handleFileUpload}
+/>
+
+{uploadStatus && <p style={{ color: "#cbd5f5" }}>{uploadStatus}</p>}
       </header>
 
       <div className="chat-window">
