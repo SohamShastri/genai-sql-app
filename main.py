@@ -1,9 +1,12 @@
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body , UploadFile, File
 import sqlite3
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
 from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd 
+active_dataframe = None
+active_filename = None
 
 load_dotenv()
 
@@ -30,29 +33,68 @@ def get_sales_data():
     conn.close()
     return [dict(row) for row in rows]
 
+@app.get("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    global active_dataframe, active_filename
+
+    filename = file.filename.lower()
+    try:
+        if filename.endswith('.csv'):
+            df = pd.read_csv(file.file)
+        elif filename.endswith('.xlsx'):
+            df = pd.read_excel(file.file)
+        else:
+            return {"error": "Unsupported file type. Please upload a CSV or Excel file."}
+        active_dataframe=df
+        active_filename=file.filename
+        return {
+                "message": "File uploaded successfully",
+                "rows": len(df),
+                "columns": list(df.columns)
+            }
+    except Exception as e:
+        return {"error": f"Failed to read file: {e}"}
+
+
 @app.post("/chat")
 async def chat(body: dict = Body(...)):
     user_msg = body.get("message")
     if not user_msg:
         return {"reply": "Please send a message."}
 
-    data = get_sales_data()
-    data_text = "\n".join([f"{d['month']}: {d['revenue']}" for d in data])
+    # Choose dataset
+    if active_dataframe is not None:
+        df = active_dataframe
+        data_text = df.head(20).to_string(index=False)
+    else:
+        data = get_sales_data()
+        data_text = "\n".join([str(row) for row in data])
 
     prompt = f"""
-You are a friendly, conversational data assistant.
+You are a friendly conversational data assistant.
 
-Sales data:
+Dataset sample:
 {data_text}
-
-Conversation rules:
-- Be concise by default.
-- Only give detailed analysis if the user asks for it.
-- If the user says thanks or ok, reply naturally.
-- Do not repeat the full report unless requested.
 
 User message:
 {user_msg}
+Answer conversationally. Be concise unless asked for details.
+"""
+
+    response = model.generate_content(prompt)
+    return {"reply": response.text}
+
+
+    prompt = f"""
+You are a friendly data assistant.
+
+Here is the dataset (sample rows):
+{data_text}
+
+User question:
+{user_msg}
+
+Answer conversationally. Be concise unless asked for details.
 """
 
     try:
@@ -63,3 +105,6 @@ User message:
 
     except Exception as e:
         return {"reply": f"Gemini error: {e}"}
+    
+   
+
