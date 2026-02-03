@@ -42,19 +42,13 @@ function App(
     <div className="app">
       <header className="header">
         <h2>GenAI SQL Chatbot</h2>
-        <p>Ask questions about your data (upload your files)</p>
-        <input
-  type="file"
-  accept=".csv,.xlsx"
-  onChange={handleFileUpload}
-/>
-
-{uploadStatus && <p style={{ color: "#cbd5f5" }}>{uploadStatus}</p>}
+        <p>Ask questions about your data after uploading (CSV/XLSX)</p>
+        
       </header>
 
       <div className="chat-window">
         {messages.length === 0 && (
-          <div className="empty">Start by asking something 👇</div>
+          <div className="empty">Upload Data and start chatting naturally👇</div>
         )}
 
         {messages.map((msg, index) => (
@@ -72,17 +66,30 @@ function App(
       </div>
 
       <div className="input-bar">
+  <input
+        type="text"
+        placeholder="Ask something about your data..."
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+      />
+
+      {/* Upload button */}
+      <label className="upload-btn">
+        📁
         <input
-          type="text"
-          placeholder="Ask something about your data..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          type="file"
+          accept=".csv,.xlsx"
+          onChange={handleFileUpload}
+         hidden
         />
-        <button onClick={sendMessage} disabled={loading}>
-          Send
-        </button>
-      </div>
+      </label>
+
+      <button onClick={sendMessage} disabled={loading}>
+        Send
+      </button>
+    </div>
+
     </div>
   );
 
