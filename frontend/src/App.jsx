@@ -64,7 +64,11 @@ function App(
           <div className="message bot">AI is thinking...</div>
         )}
       </div>
-
+{uploadStatus && (
+  <div style={{ padding: "0 16px", fontSize: "14px", color: "#080809" }}>
+    {uploadStatus}
+  </div>
+)}
       <div className="input-bar">
   <input
         type="text"

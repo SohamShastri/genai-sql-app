@@ -1,15 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
+import requests
 import os
-from dotenv import load_dotenv
-import google.generativeai as genai
+
 
 app = FastAPI(title="GenAI SQL Chatbot")
-load_dotenv()
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash")
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,8 +75,18 @@ Do not make the Answer lenghtier than necessary.
 """
 
     try:
-        response = model.generate_content(prompt)
-        return {"reply": response.text}
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "phi3",
+                "prompt": prompt,
+                "stream": False,
+            },
+            timeout=120
+        )
+        reply=response.json().get("response", "No response from model.")
+        return {"reply": reply}
+
     except Exception:
         return {
             "reply": (
