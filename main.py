@@ -1,7 +1,11 @@
+from asyncio import timeout
 from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import requests
+import pyodbc
+import pandas as pd
+import ollama 
 import os
 
 
@@ -52,45 +56,47 @@ async def upload(file: UploadFile = File(...)):
 @app.post("/chat")
 async def chat(body: dict = Body(...)):
     user_msg = body.get("message")
+
     if not user_msg:
-        return {"reply": "Please ask something about the dataset."}
+        return {"reply": "Please enter a message."}
 
     if active_dataframe is None:
         return {"reply": "No dataset uploaded yet."}
 
     df = active_dataframe
     data_text = df.head(20).to_string(index=False)
-
     prompt = f"""
-You are a friendly data assistant.
+You are a data assistant.
 
-Here is a sample of the dataset:
+Rules:
+- Answer ONLY using the provided dataset
+- Do NOT assume missing information
+- Be concise and factual
+- If a value is missing, say "Unknown"
+- If calculation is needed, compute it from data
+- Do NOT add unnecessary explanation
+
+Dataset sample:
 {data_text}
 
 User question:
 {user_msg}
 
-Answer clearly and concisely.
-Do not make the Answer lenghtier than necessary.
+Answer briefly and clearly.
 """
-
     try:
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "phi3",
-                "prompt": prompt,
-                "stream": False,
-            },
-            timeout=120
+        response = ollama.chat(
+            model="llama3",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
-        reply=response.json().get("response", "No response from model.")
+
+        reply = response["message"]["content"]
+
         return {"reply": reply}
 
-    except Exception:
+    except Exception as e:
         return {
-            "reply": (
-                "⚠️ AI is temporarily unavailable due to rate limits.\n"
-                "Your dataset is loaded correctly. Please retry in a minute."
-            )
+            "reply": f"⚠️ LLaMA Error: {str(e)}"
         }
