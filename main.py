@@ -1,4 +1,5 @@
 from asyncio import timeout
+from asyncio import timeout
 from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -57,7 +58,9 @@ async def upload(file: UploadFile = File(...)):
 async def chat(body: dict = Body(...)):
     user_msg = body.get("message")
 
+
     if not user_msg:
+        return {"reply": "Please enter a message."}
         return {"reply": "Please enter a message."}
 
     if active_dataframe is None:
