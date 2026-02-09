@@ -2,6 +2,8 @@ import { useState } from "react";
 import "./index.css";
 
 
+
+
 function App(
 ) {
   const [messages, setMessages] = useState([]);
@@ -69,6 +71,7 @@ function App(
     {uploadStatus}
   </div>
 )}
+
       <div className="input-bar">
   <input
         type="text"

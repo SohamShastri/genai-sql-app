@@ -1,7 +1,10 @@
+from asyncio import timeout
 from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import requests
+import pyodbc
+import pandas as pd
 import os
 
 
@@ -52,8 +55,9 @@ async def upload(file: UploadFile = File(...)):
 @app.post("/chat")
 async def chat(body: dict = Body(...)):
     user_msg = body.get("message")
+
     if not user_msg:
-        return {"reply": "Please ask something about the dataset."}
+        return {"reply": "Please enter a message."}
 
     if active_dataframe is None:
         return {"reply": "No dataset uploaded yet."}
@@ -61,18 +65,26 @@ async def chat(body: dict = Body(...)):
     df = active_dataframe
     data_text = df.head(20).to_string(index=False)
 
-    prompt = f"""
-You are a friendly data assistant.
-
-Here is a sample of the dataset:
-{data_text}
-
-User question:
-{user_msg}
-
-Answer clearly and concisely.
-Do not make the Answer lenghtier than necessary.
-"""
+    prompt = ("""
+    "You are a data assistant.\n\n"
+    "You are given a dataset sample and a user question.\n\n"
+    "Rules:\n"
+    "- Answer ONLY using the provided dataset\n"
+    "- Do NOT assume missing information\n"
+    "- Be concise and factual\n"
+    "- If a value is missing, say 'Unknown'\n"
+    "- If the question requires counting or calculation, compute it from the dataset\n"
+    "- Do NOT add explanations unless asked\n"
+    "- Do NOT add examples or stories\n\n"
+    "Dataset sample:\n"
+    f"{data_text}\n\n"
+    "User question:\n"
+    f"{user_msg}\n\n"
+    "Answer:"
+              "Keep the answer brief and to the point."
+              "Do not make the answer lengthier than necessary."
+    """
+)
 
     try:
         response = requests.post(
@@ -81,16 +93,16 @@ Do not make the Answer lenghtier than necessary.
                 "model": "phi3",
                 "prompt": prompt,
                 "stream": False,
-            },
+                 "options": {
+                    "num_predict": 120,
+                    "temperature": 0.2
+                }
+            },   
             timeout=120
         )
-        reply=response.json().get("response", "No response from model.")
+
+        reply = response.json().get("response", "No response from model.")
         return {"reply": reply}
 
-    except Exception:
-        return {
-            "reply": (
-                "⚠️ AI is temporarily unavailable due to rate limits.\n"
-                "Your dataset is loaded correctly. Please retry in a minute."
-            )
-        }
+    except Exception as e:
+        return {"reply": f"Local AI error: {e}"}
