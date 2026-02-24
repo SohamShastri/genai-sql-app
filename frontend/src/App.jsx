@@ -1,110 +1,108 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Sidebar from "./components/SIdebar";
 import "./index.css";
 
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+} from "chart.js";
 
+import { Bar, Line } from "react-chartjs-2";
 
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
-function App(
-) {
+function App() {
+  const [tableName, setTableName] = useState("");
+  const [tables, setTables] = useState([]);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [uploadStatus,  setUploadStatus] = useState(""); 
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/tables")
+      .then(res => res.json())
+      .then(data => {
+        if (data.tables) setTables(data.tables);
+      })
+      .catch(() => console.error("Failed to load tables"));
+  }, []);
 
   async function handleFileUpload(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const formData = new FormData();
-  formData.append("file", file);
+    const formData = new FormData();
+    formData.append("file", file);
 
-  try {
-    const res = await fetch("http://localhost:8000/upload", {
-      method: "POST",
-      body: formData,
-    });
+    try {
+      const res = await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (data.error) {
-      setUploadStatus(`❌ ${data.error}`);
-    } else {
-      setUploadStatus(
-        `✅ Using uploaded dataset: ${file.name} (${data.rows} rows)`
-      );
+      if (data.error) {
+        setUploadStatus(`❌ ${data.error}`);
+      } else {
+        setUploadStatus(
+          `✅ Using uploaded dataset: ${file.name} (${data.rows} rows)`
+        );
+      }
+    } catch {
+      setUploadStatus("❌ Upload failed");
     }
-  } catch (err) {
-    setUploadStatus("❌ Upload failed");
   }
-}
 
+  
+  async function handleLoadTable() {
+    if (!tableName.trim()) {
+      setUploadStatus("❌ Please select a table");
+      return;
+    }
 
+    try {
+      const res = await fetch(
+        `http://localhost:8000/load-table/${tableName}`
+      );
+      const data = await res.json();
 
-  return (
-    <div className="app">
-      <header className="header">
-        <h2>GenAI SQL Chatbot</h2>
-        <p>Ask questions about your data after uploading (CSV/XLSX)</p>
-        
-      </header>
-
-      <div className="chat-window">
-        {messages.length === 0 && (
-          <div className="empty">Upload Data and start chatting naturally👇</div>
-        )}
-
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`message ${msg.sender}`}
-          >
-            {msg.text}
-          </div>
-        ))}
-
-        {loading && (
-          <div className="message bot">AI is thinking...</div>
-        )}
-      </div>
-{uploadStatus && (
-  <div style={{ padding: "0 16px", fontSize: "14px", color: "#080809" }}>
-    {uploadStatus}
-  </div>
-)}
-
-      <div className="input-bar">
-  <input
-        type="text"
-        placeholder="Ask something about your data..."
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-      />
-
-      {/* Upload button */}
-      <label className="upload-btn">
-        📁
-        <input
-          type="file"
-          accept=".csv,.xlsx"
-          onChange={handleFileUpload}
-         hidden
-        />
-      </label>
-
-      <button onClick={sendMessage} disabled={loading}>
-        Send
-      </button>
-    </div>
-
-    </div>
-  );
+      if (data.error) {
+        setUploadStatus(`❌ ${data.error}`);
+      } else {
+        setUploadStatus(
+          `✅ Using DB table: ${tableName} (${data.rows} rows)`
+        );
+      }
+    } catch {
+      setUploadStatus("❌ Failed to load DB table");
+    }
+  }
 
   async function sendMessage() {
     if (!input.trim()) return;
 
-    const userMessage = { sender: "user", text: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input;
+
+    setMessages(prev => [...prev, { sender: "user", text: currentInput }]);
     setInput("");
     setLoading(true);
 
@@ -112,26 +110,184 @@ function App(
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({ message: currentInput }),
       });
 
       const data = await res.json();
 
-      const botMessage = {
-        sender: "bot",
-        text: data.reply || "No response",
-      };
-
-      setMessages((prev) => [...prev, botMessage]);
-    } catch (err) {
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
-        { sender: "bot", text: "Error connecting to backend" },
+        {
+          sender: "bot",
+          text: data.reply ||  "",
+          chart: data.chart || null
+        }
+      ]);
+
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        { sender: "bot", text: "Backend error" }
       ]);
     } finally {
       setLoading(false);
     }
   }
+
+  return (
+    <div className="app">
+
+      {/* Sidebar */}
+      <Sidebar
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
+      />
+
+      {/* Main Chat Area */}
+      <main className="chat-container">
+
+        {/* Header */}
+        <header className="topbar">
+          <div className="model-name">GenAI SQL Assistant</div>
+          <button className="login-btn">Login</button>
+        </header>
+
+        {/* Chat Window */}
+        <div className="chat-window">
+
+          {messages.length === 0 && (
+            <div className="empty">
+              Upload data and start chatting 👇
+            </div>
+          )}
+
+          {messages.map((msg, index) => (
+            <div key={index} className={`message ${msg.sender}`}>
+    
+              {/* Text */}
+              {msg.text && <div>{msg.text}</div>}
+
+              {/* Chart */}
+              {msg.chart && (
+                <div style={{ marginTop: "12px" }}>
+                  {msg.chart.type === "bar" ? (
+                    <Bar
+                      data={{
+                        labels: msg.chart.labels,
+                        datasets: [
+                          {
+                            label: "Value",
+                            data: msg.chart.values,
+                            backgroundColor: "#4f46e5",
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        plugins: {
+                          legend: { display: false },
+                        },
+                      }}
+                    />
+                  ) : (
+                    <Line
+                      data={{
+                        labels: msg.chart.labels,
+                        datasets: [
+                          {
+                            label: "Value",
+                            data: msg.chart.values,
+                            borderColor: "#4f46e5",
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        plugins: {
+                        legend: { display: false },
+                        },
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {loading && (
+            <div className="message bot">
+              AI is thinking...
+            </div>
+          )}
+
+        </div>
+
+        {/* Status */}
+        {uploadStatus && (
+          <div className="status">
+            {uploadStatus}
+          </div>
+        )}
+
+        {/* Input Bar */}
+        <div className="input-bar">
+
+          {/* Data Controls */}
+          <div className="data-controls">
+
+            <div className="custom-select">
+              <select
+                value={tableName}
+                onChange={(e) => setTableName(e.target.value)}
+              >
+                <option value="">Select DB Table</option>
+                {tables.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            <button className="load-btn" onClick={handleLoadTable}>
+                     Load
+            </button>
+
+
+            <label className="upload-pill">
+              Upload
+              <input
+                type="file"
+                accept=".csv,.xlsx"
+                onChange={handleFileUpload}
+                hidden
+              />
+            </label>
+
+          </div>
+
+          {/* Chat Input */}
+          <input
+            type="text"
+            placeholder="Ask something about your data..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          />
+
+          {/* Send Button */}
+          <button
+              className="chat-send-btn"
+              onClick={sendMessage}
+              disabled={loading}
+            >
+            {loading ? "Sending..." : "Send"}
+            </button>
+
+        </div>
+
+      </main>
+
+    </div>
+  );
 }
 
 export default App;
