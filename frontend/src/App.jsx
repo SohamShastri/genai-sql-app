@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "./components/SIdebar";
 import ReactMarkdown from "react-markdown";
 import "./index.css";
@@ -17,6 +17,7 @@ import {
 } from "chart.js";
 
 import { Bar, Line, Pie } from "react-chartjs-2";
+import ChartDataLabels from "chartjs-plugin-datalabels";
 
 ChartJS.register(
   CategoryScale,
@@ -30,11 +31,23 @@ ChartJS.register(
   Legend
 );
 
+// ---- Global Constants ----
+const CHART_COLORS = [
+  "#4f46e5","#7c3aed","#db2777","#ea580c","#16a34a",
+  "#0891b2","#d97706","#dc2626","#9333ea","#0284c7"
+];
+
 // ---- Detect JOIN intent on frontend ----
 // Only triggers when user EXPLICITLY says join/combine/merge + two table names
 function isJoinQuery(text) {
-  // Must have explicit join/combine/merge keyword AND two word-like table names
-  return /\b(join|combine|merge)\s+\w+\s+(to|with|and)\s+\w+/i.test(text);
+  // Explicit join/combine/merge keyword
+  if (/\b(join|combine|merge)\b/i.test(text)) return true;
+  // Natural language multi-table: "orders, products, order items and categories"
+  // with join-related context words
+  if (/\b(with|and|between|across)\b/i.test(text) &&
+      (text.match(/,/g) || []).length >= 1 &&
+      /\b(join|show|get|display|combine|merge|connect)\b/i.test(text)) return true;
+  return false;
 }
 
 // ---- Renders a result table ----
@@ -42,49 +55,97 @@ function ResultTable({ tableData }) {
   if (!tableData) return null;
   const { columns, rows } = tableData;
 
+  const exportCSV = () => {
+    const header = columns.join(",");
+    const body = rows.map(row =>
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+    ).join("\n");
+    const blob = new Blob([header + "\n" + body], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `export-${Date.now()}.csv`;
+    link.click();
+  };
+
+  const exportExcel = () => {
+    import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs").then(XLSX => {
+      const wsData = [columns, ...rows.map(r => r.map(c => String(c)))];
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+      // Style header row bold
+      columns.forEach((_, i) => {
+        const cell = ws[XLSX.utils.encode_cell({ r: 0, c: i })];
+        if (cell) cell.s = { font: { bold: true } };
+      });
+
+      // Auto column width
+      ws["!cols"] = columns.map((col, i) => ({
+        wch: Math.max(col.length, ...rows.map(r => String(r[i] ?? "").length), 10)
+      }));
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Results");
+      XLSX.writeFile(wb, `export-${Date.now()}.xlsx`);
+    });
+  };
+
   return (
-    <div style={{
-      overflowX: "auto",
-      marginTop: "12px",
-      borderRadius: "8px",
-      border: "1px solid #e2e8f0",
-      maxHeight: "320px",
-      overflowY: "auto"
-    }}>
-      <table style={{
-        width: "100%",
-        borderCollapse: "collapse",
-        fontSize: "13px",
+    <div>
+      {/* Export buttons */}
+      <div style={{ display: "flex", gap: "8px", marginTop: "10px", marginBottom: "4px" }}>
+        <button onClick={exportCSV} style={{
+          background: "none", border: "1px solid #16a34a", borderRadius: "6px",
+          padding: "3px 10px", fontSize: "11px", color: "#16a34a", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: "4px"
+        }}>
+          ⬇️ CSV
+        </button>
+        <button onClick={exportExcel} style={{
+          background: "none", border: "1px solid #0891b2", borderRadius: "6px",
+          padding: "3px 10px", fontSize: "11px", color: "#0891b2", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: "4px"
+        }}>
+          📊 Excel
+        </button>
+        <span style={{ fontSize: "11px", color: "#94a3b8", alignSelf: "center" }}>
+          {rows.length} rows · {columns.length} cols
+        </span>
+      </div>
+
+      <div style={{
+        overflowX: "auto",
+        borderRadius: "8px",
+        border: "1px solid #e2e8f0",
+        maxHeight: "320px",
+        overflowY: "auto"
       }}>
-        <thead>
-          <tr style={{ background: "#4f46e5", color: "#fff", position: "sticky", top: 0 }}>
-            {columns.map((col, i) => (
-              <th key={i} style={{
-                padding: "8px 12px",
-                textAlign: "left",
-                fontWeight: 600,
-                whiteSpace: "nowrap"
-              }}>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri} style={{
-              background: ri % 2 === 0 ? "#fff" : "#f8fafc",
-              borderBottom: "1px solid #e2e8f0"
-            }}>
-              {row.map((cell, ci) => (
-                <td key={ci} style={{
-                  padding: "7px 12px",
-                  whiteSpace: "nowrap",
-                  color: "#334155"
-                }}>{String(cell)}</td>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+          <thead>
+            <tr style={{ background: "#4f46e5", color: "#fff", position: "sticky", top: 0 }}>
+              {columns.map((col, i) => (
+                <th key={i} style={{
+                  padding: "8px 12px", textAlign: "left",
+                  fontWeight: 600, whiteSpace: "nowrap"
+                }}>{col}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} style={{
+                background: ri % 2 === 0 ? "#fff" : "#f8fafc",
+                borderBottom: "1px solid #e2e8f0"
+              }}>
+                {row.map((cell, ci) => (
+                  <td key={ci} style={{
+                    padding: "7px 12px", whiteSpace: "nowrap", color: "#334155"
+                  }}>{String(cell)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -334,6 +395,178 @@ function ChartSuggestion({ suggestion, onAccept }) {
       >
         ✕
       </button>
+    </div>
+  );
+}
+
+// ---- Chart with its own ref for correct download ----
+function ChartWithDownload({ chart, onClose }) {
+  const chartRef = React.useRef(null);
+
+  const downloadPNG = () => {
+    const chartInstance = chartRef.current;
+    if (!chartInstance) return;
+
+    // chart.js v4 — ref.current IS the chart instance, canvas is chart.canvas
+    const canvas = chartInstance.canvas;
+    if (!canvas) return;
+
+    try {
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = canvas.width;
+      exportCanvas.height = canvas.height;
+      const ctx = exportCanvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+      ctx.drawImage(canvas, 0, 0);
+
+      const link = document.createElement("a");
+      link.download = `chart-${Date.now()}.png`;
+      link.href = exportCanvas.toDataURL("image/png");
+      link.click();
+    } catch (e) {
+      console.error("Download failed:", e);
+    }
+  };
+
+  const commonOptions = {
+    responsive: true,
+    plugins: {
+      legend: { display: chart.type === "pie" },
+      datalabels: {
+        display: true,
+        color: chart.type === "pie" ? "#fff" : "#333",
+        font: { weight: "bold", size: 12 },
+        anchor: chart.type === "pie" ? "center" : "end",
+        align: chart.type === "pie" ? "center" : "top",
+        formatter: (value) =>
+          typeof value === "number"
+            ? value % 1 === 0 ? value : value.toFixed(2)
+            : value
+      }
+    }
+  };
+
+  const data = {
+    labels: chart.labels,
+    datasets: chart.type === "pie"
+      ? [{ data: chart.values, backgroundColor: CHART_COLORS }]
+      : chart.type === "line"
+      ? [{ label: "Value", data: chart.values, borderColor: "#4f46e5", backgroundColor: "rgba(79,70,229,0.1)", fill: true, tension: 0.3 }]
+      : [{ label: "Value", data: chart.values, backgroundColor: CHART_COLORS }]
+  };
+
+  return (
+    <div style={{ marginTop: "12px", maxWidth: "520px" }}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+        <button onClick={onClose} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", color: "#64748b", cursor: "pointer" }}>
+          ✕ Close chart
+        </button>
+        <button onClick={downloadPNG} style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", color: "#4f46e5", cursor: "pointer" }}>
+          ⬇️ Download PNG
+        </button>
+      </div>
+
+      {chart.type === "bar" && <Bar ref={chartRef} data={data} options={commonOptions} plugins={[ChartDataLabels]} />}
+      {chart.type === "line" && <Line ref={chartRef} data={data} options={commonOptions} plugins={[ChartDataLabels]} />}
+      {chart.type === "pie" && <Pie ref={chartRef} data={data} options={commonOptions} plugins={[ChartDataLabels]} />}
+    </div>
+  );
+}
+
+// ---- Info Tooltip Component ----
+function InfoTooltip({ darkMode }) {
+  const [show, setShow] = React.useState(false);
+
+  const keywords = [
+    { category: "📊 Charts", items: ["plot", "chart", "graph", "visualize", "bar chart", "pie chart", "line chart"] },
+    { category: "🔢 Aggregation", items: ["top", "highest", "lowest", "average", "total", "count", "sum", "max", "min"] },
+    { category: "📋 Listing", items: ["show", "list", "display", "give me", "fetch", "get me"] },
+    { category: "📝 Summary", items: ["summary", "summarize", "overview", "analyze"] },
+    { category: "🔗 JOIN", items: ["join X to Y", "combine X and Y", "merge X with Y"] },
+    { category: "🗄️ DB Info", items: ["what tables", "schema of", "columns in", "describe", "how many tables", "db size"] },
+    { category: "⛔ Blocked", items: ["alter", "delete", "drop", "insert", "update", "truncate"] },
+  ];
+
+  const bg = darkMode ? "#1e293b" : "#ffffff";
+  const border = darkMode ? "#334155" : "#e2e8f0";
+  const titleColor = darkMode ? "#f1f5f9" : "#1e293b";
+  const categoryColor = darkMode ? "#94a3b8" : "#64748b";
+  const tagBg = darkMode ? "#334155" : "#f1f5f9";
+  const tagColor = darkMode ? "#e2e8f0" : "#334155";
+  const footerColor = darkMode ? "#64748b" : "#94a3b8";
+  const footerBorder = darkMode ? "#334155" : "#e2e8f0";
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setShow(v => !v)}
+        style={{
+          background: show ? "#6366f1" : "none",
+          border: "1.5px solid #6366f1",
+          borderRadius: "50%",
+          width: "28px",
+          height: "28px",
+          cursor: "pointer",
+          fontSize: "13px",
+          color: show ? "#ffffff" : "#6366f1",
+          fontWeight: "bold",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "all 0.2s",
+        }}
+      >
+        ℹ
+      </button>
+
+      {show && (
+        <div style={{
+          position: "absolute",
+          top: "36px",
+          right: "0",
+          width: "320px",
+          background: bg,
+          border: `1px solid ${border}`,
+          borderRadius: "12px",
+          padding: "14px",
+          zIndex: 9999,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: titleColor }}>
+              💡 Supported Keywords
+            </div>
+            <button onClick={() => setShow(false)} style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: categoryColor, fontSize: "16px", lineHeight: 1, padding: "0 2px"
+            }}>✕</button>
+          </div>
+          {keywords.map((group, i) => (
+            <div key={i} style={{ marginBottom: "10px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 700, color: categoryColor, marginBottom: "4px" }}>
+                {group.category}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                {group.items.map((kw, j) => (
+                  <span key={j} style={{
+                    background: tagBg,
+                    color: tagColor,
+                    borderRadius: "6px",
+                    padding: "2px 8px",
+                    fontSize: "11px",
+                  }}>
+                    {kw}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize: "10px", color: footerColor, marginTop: "8px", borderTop: `1px solid ${footerBorder}`, paddingTop: "8px" }}>
+            Ask in natural language — AI handles the rest!
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -592,71 +825,22 @@ function App() {
     }
   }
 
-  const CHART_COLORS = [
-    "#4f46e5","#7c3aed","#db2777","#ea580c","#16a34a",
-    "#0891b2","#d97706","#dc2626","#9333ea","#0284c7"
-  ];
+  const chatWindowRef = React.useRef(null);
+  const [showScrollBtn, setShowScrollBtn] = React.useState(false);
 
-  function renderChart(chart) {
-    if (!chart) return null;
+  const scrollToBottom = () => {
+    chatWindowRef.current?.scrollTo({ top: chatWindowRef.current.scrollHeight, behavior: "smooth" });
+  };
 
-    const commonOptions = {
-      responsive: true,
-      plugins: { legend: { display: chart.type === "pie" } },
-    };
+  const handleScroll = () => {
+    const el = chatWindowRef.current;
+    if (!el) return;
+    setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 150);
+  };
 
-    if (chart.type === "bar") {
-      return (
-        <Bar
-          data={{
-            labels: chart.labels,
-            datasets: [{
-              label: "Value",
-              data: chart.values,
-              backgroundColor: CHART_COLORS,
-            }],
-          }}
-          options={commonOptions}
-        />
-      );
-    }
-
-    if (chart.type === "line") {
-      return (
-        <Line
-          data={{
-            labels: chart.labels,
-            datasets: [{
-              label: "Value",
-              data: chart.values,
-              borderColor: "#4f46e5",
-              backgroundColor: "rgba(79,70,229,0.1)",
-              fill: true,
-              tension: 0.3,
-            }],
-          }}
-          options={commonOptions}
-        />
-      );
-    }
-
-    if (chart.type === "pie") {
-      return (
-        <Pie
-          data={{
-            labels: chart.labels,
-            datasets: [{
-              data: chart.values,
-              backgroundColor: CHART_COLORS,
-            }],
-          }}
-          options={commonOptions}
-        />
-      );
-    }
-
-    return null;
-  }
+  React.useEffect(() => {
+    scrollToBottom();
+  }, [chats, activeChatId]);
 
   return (
     <div className="app">
@@ -690,7 +874,7 @@ function App() {
       />
 
       {/* Main Chat Area */}
-      <main className="chat-container">
+      <main className="chat-container" style={{ position: "relative" }}>
 
         {/* Header */}
         <header className="topbar">
@@ -705,6 +889,18 @@ function App() {
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* Info tooltip */}
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{
+                fontSize: "12px",
+                color: darkMode ? "#94a3b8" : "#64748b",
+                fontWeight: 500,
+                whiteSpace: "nowrap"
+              }}>
+                Special Keyword Info
+              </span>
+              <InfoTooltip darkMode={darkMode} />
+            </div>
             {/* Dark mode toggle */}
             <button
               onClick={() => setDarkMode(v => !v)}
@@ -726,7 +922,7 @@ function App() {
         </header>
 
         {/* Chat Window */}
-        <div className="chat-window">
+        <div className="chat-window" ref={chatWindowRef} onScroll={handleScroll}>
 
           {activeChat?.messages.length === 0 && (
             <div className="empty">
@@ -784,9 +980,23 @@ function App() {
 
                   {/* Chart */}
                   {msg.chart && (
-                    <div style={{ marginTop: "16px", maxWidth: "520px" }}>
-                      {renderChart(msg.chart)}
-                    </div>
+                    <ChartWithDownload
+                      chart={msg.chart}
+                      onClose={() => {
+                        setChats(prev => prev.map(chat =>
+                          chat.id === activeChatId
+                            ? {
+                                ...chat,
+                                messages: chat.messages.map((m, i) =>
+                                  i === index
+                                    ? { ...m, chart: null }
+                                    : m
+                                )
+                              }
+                            : chat
+                        ));
+                      }}
+                    />
                   )}
 
                   {/* SQL toggle */}
@@ -815,38 +1025,23 @@ function App() {
                     <ResultTable tableData={msg.tableData} />
                   )}
                   {msg.chart && (
-                    <div style={{ marginTop: "12px", maxWidth: "520px" }}>
-                      {/* Close chart button */}
-                      <button
-                        onClick={() => {
-                          setChats(prev => prev.map(chat =>
-                            chat.id === activeChatId
-                              ? {
-                                  ...chat,
-                                  messages: chat.messages.map((m, i) =>
-                                    i === index
-                                      ? { ...m, chart: null, chartSuggestion: m._savedSuggestion || null }
-                                      : m
-                                  )
-                                }
-                              : chat
-                          ));
-                        }}
-                        style={{
-                          background: "none",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: "6px",
-                          padding: "4px 10px",
-                          fontSize: "12px",
-                          color: "#64748b",
-                          cursor: "pointer",
-                          marginBottom: "8px"
-                        }}
-                      >
-                        ✕ Close chart
-                      </button>
-                      {renderChart(msg.chart)}
-                    </div>
+                    <ChartWithDownload
+                      chart={msg.chart}
+                      onClose={() => {
+                        setChats(prev => prev.map(chat =>
+                          chat.id === activeChatId
+                            ? {
+                                ...chat,
+                                messages: chat.messages.map((m, i) =>
+                                  i === index
+                                    ? { ...m, chart: null, chartSuggestion: m._savedSuggestion || null }
+                                    : m
+                                )
+                              }
+                            : chat
+                        ));
+                      }}
+                    />
                   )}
                   {/* Chart suggestion banner */}
                   {msg.chartSuggestion && !msg.chart && (
@@ -893,6 +1088,35 @@ function App() {
           )}
 
         </div>
+
+        {/* Scroll to bottom button */}
+        {showScrollBtn && (
+          <button
+            onClick={scrollToBottom}
+            style={{
+              position: "absolute",
+              bottom: "100px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "#4f46e5",
+              color: "white",
+              border: "none",
+              borderRadius: "50%",
+              width: "36px",
+              height: "36px",
+              cursor: "pointer",
+              fontSize: "18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 4px 12px rgba(79,70,229,0.4)",
+              zIndex: 100,
+            }}
+            title="Scroll to bottom"
+          >
+            ↓
+          </button>
+        )}
 
         {/* Status */}
         {uploadStatus && (

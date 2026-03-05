@@ -291,8 +291,8 @@ Frontend badge: **🔗 5-Table JOIN** `Customers → Orders → Order_items → 
 |--------------------------------------------|---------------------------|
 | Persistent chat history (localStorage)     |          ✅ Done 
 | Dark / Light mode toggle                   |          ✅ Done 
-| 2-table JOIN with FK detection             |          ✅ Done 
-| 2-table JOIN with column name matching     |          ✅ Done 
+| 2+ table JOIN with FK detection            |          ✅ Done 
+| 2+ table JOIN with column name matching    |          ✅ Done 
 | Multi-step JOIN chain (3–5 tables)         |          ✅ Done 
 | Auto chart suggestion (zero hallucination) |          ✅ Done
 | Close chart → restore table + suggestion   |          ✅ Done 
@@ -301,12 +301,13 @@ Frontend badge: **🔗 5-Table JOIN** `Customers → Orders → Order_items → 
 | SQL correction pipeline (7 steps)          |          ✅ Done 
 | Unsafe SQL blocking                        |          ✅ Done 
 | Meta / DB-level question handling          |          ✅ Done 
-| Export results to CSV / Excel              |          🔲 Planned 
-| Download charts as PNG                     |          🔲 Planned 
+| Download charts as PNG                     |          ✅ Done
+| Export results to CSV / Excel              |          ✅ Done
+| AutoScroll Button For scroll Down          |          ✅ Done
+| Info Option For Specific Key-Word (i)      |          ✅ Done
 | Authentication system                      |          🔲 Planned 
 | Multi-user support                         |          🔲 Planned 
 | RAG-based contextual memory                |          🔲 Planned  
-| Info Option For Specific Key-Word (i)      |          🔲 Planned 
 |--------------------------------------------|---------------------------|
 
 ---

@@ -6,6 +6,7 @@ function Sidebar({
   setActiveChatId,
   createNewChat,
   collapsed,
+  setCollapsed,
   dbInfo,
   deleteChat,
   clearHistory
@@ -13,10 +14,58 @@ function Sidebar({
   const [hoveredId, setHoveredId] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  return (
-    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+  if (collapsed) {
+    return (
+      <aside className="sidebar collapsed" style={{
+        width: "48px",
+        minWidth: "48px",
+        padding: "16px 8px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        transition: "width 0.25s ease",
+      }}>
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Open sidebar"
+          style={{
+            background: "none",
+            border: "1px solid #e5e7eb",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "14px",
+            padding: "4px 7px",
+            color: "#6b7280",
+          }}
+        >
+          ▶
+        </button>
+      </aside>
+    );
+  }
 
-      <div className="logo">⚡ GenAI</div>
+  return (
+    <aside className="sidebar" style={{ transition: "width 0.25s ease" }}>
+
+      {/* Logo + collapse button */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "30px" }}>
+        <div className="logo" style={{ margin: 0 }}>⚡ GenAI</div>
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Close sidebar"
+          style={{
+            background: "none",
+            border: "1px solid #e5e7eb",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "14px",
+            padding: "4px 7px",
+            color: "#6b7280",
+          }}
+        >
+          ◀
+        </button>
+      </div>
 
       {/* Database Info */}
       {dbInfo && (
@@ -51,7 +100,6 @@ function Sidebar({
               {chat.title}
             </span>
 
-            {/* Delete button — show on hover */}
             {hoveredId === chat.id && (
               <button
                 onClick={(e) => {

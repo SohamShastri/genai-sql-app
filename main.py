@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 import re
 
+
 load_dotenv()
 
 DB_SERVER = "HARSHGHOLAP04"
@@ -310,36 +311,40 @@ def detect_join_intent(question: str):
 
 def generate_join_sql(table1: str, table2: str, schema1: list, schema2: list,
                        join_key1: str, join_key2: str, question: str):
-    """Ask LLM to generate a JOIN query given two tables and their schemas."""
+    """Build JOIN SQL directly — no LLM for structure, LLM only picks SELECT columns."""
 
-    cols1 = ", ".join(f"t1.[{col}]" for col, _ in schema1)
-    cols2 = ", ".join(f"t2.[{col}]" for col, _ in schema2)
+    cols1 = [col for col, _ in schema1]
+    cols2 = [col for col, _ in schema2]
 
-    prompt = f"""
-Generate a valid Microsoft SQL Server SELECT query using a JOIN.
+    # Build the fixed JOIN structure
+    join_structure = f"""FROM [{table1}] AS t1
+INNER JOIN [{table2}] AS t2 ON t1.[{join_key1}] = t2.[{join_key2}]"""
 
-Table 1: [{table1}] aliased as t1
-Columns: {", ".join(col for col, _ in schema1)}
+    prompt = f"""You are a Microsoft SQL Server expert.
 
-Table 2: [{table2}] aliased as t2
-Columns: {", ".join(col for col, _ in schema2)}
+Write ONLY the SELECT clause (columns) for this JOIN query.
 
-Detected join key:
-  t1.[{join_key1}] = t2.[{join_key2}]
+Table 1: [{table1}] alias t1
+Columns: {", ".join(cols1)}
 
-RULES:
-- Use INNER JOIN unless the question specifies LEFT/RIGHT.
-- Always prefix columns with t1. or t2. to avoid ambiguity.
-- Use SQL Server syntax only (TOP, not LIMIT).
-- Return SELECT TOP 100 if no specific limit is given.
-- Output SQL only. No explanation. No markdown. No semicolons unless at very end.
+Table 2: [{table2}] alias t2
+Columns: {", ".join(cols2)}
+
+The FROM and JOIN are already written:
+{join_structure}
 
 User question: {question}
 
-Respond with ONLY the SQL query. Start your response with SELECT. No preamble, no explanation, no text before SELECT.
+STRICT RULES:
+- Write ONLY the SELECT line, starting with SELECT TOP 100
+- Use ONLY t1.[ColumnName] or t2.[ColumnName] format
+- No FROM, no JOIN, no WHERE unless needed for filtering
+- No explanation, no markdown, no semicolons
 
-SQL:
-"""
+Example output:
+SELECT TOP 100 t1.[Order_id], t1.[OrderDate], t2.[FirstName], t2.[LastName]
+
+SELECT clause:"""
 
     response = requests.post(
         "http://localhost:11434/api/generate",
@@ -347,15 +352,23 @@ SQL:
             "model": "llama3",
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": 0,
-                "num_predict": 200
-            }
+            "options": {"temperature": 0, "num_predict": 150}
         },
         timeout=120
     )
 
-    return response.json().get("response", "").strip()
+    select_clause = response.json().get("response", "").strip()
+    select_clause = clean_sql_output(select_clause)
+
+    # If LLM didn't give SELECT, build default
+    if not select_clause.upper().startswith("SELECT"):
+        select_cols1 = ", ".join(f"t1.[{c}]" for c in cols1)
+        select_cols2 = ", ".join(f"t2.[{c}]" for c in cols2)
+        select_clause = f"SELECT TOP 100 {select_cols1}, {select_cols2}"
+
+    # Always append the correct FROM + JOIN
+    sql = f"{select_clause}\n{join_structure}"
+    return sql
 
 
 def enforce_schema(sql: str, schema: list, table_name: str):
@@ -540,6 +553,9 @@ def clean_sql_output(raw_sql: str):
     if select_match:
         raw_sql = raw_sql[select_match.start():]
 
+    # Fix double SELECT SELECT
+    raw_sql = re.sub(r"SELECT\s+SELECT\b", "SELECT", raw_sql, flags=re.IGNORECASE)
+
     # Find first complete SELECT statement ending at semicolon
     match = re.search(r"(SELECT[\s\S]+?;)", raw_sql, re.IGNORECASE)
     if match:
@@ -565,45 +581,7 @@ def clean_sql_output(raw_sql: str):
         sql_lines.append(line)
 
     return "\n".join(sql_lines).strip()
-    # Remove markdown fences
-    raw_sql = re.sub(r"```sql", "", raw_sql, flags=re.IGNORECASE)
-    raw_sql = raw_sql.replace("```", "")
 
-    # Find the FIRST real SELECT keyword position and cut everything before it
-    # This strips LLM preamble like "Here is the SQL:" or "SELECT TOP 10 query that answers..."
-    select_match = re.search(r"\bSELECT\b", raw_sql, re.IGNORECASE)
-    if select_match:
-        raw_sql = raw_sql[select_match.start():]
-
-    # Now find the first complete SELECT statement ending at semicolon
-    match = re.search(r"(SELECT[\s\S]+?;)", raw_sql, re.IGNORECASE)
-    if match:
-        sql = match.group(1).strip()
-    else:
-        # No semicolon — take until double newline or end
-        match = re.search(r"(SELECT[\s\S]+?)(\n\n|$)", raw_sql, re.IGNORECASE)
-        sql = match.group(1).strip() if match else raw_sql.strip()
-
-    # Strip any trailing natural language that crept in after the SQL
-    # e.g. "SELECT ... FROM table\n\nThis query returns..."
-    # Keep only up to the first line that doesn't look like SQL
-    lines = sql.splitlines()
-    sql_lines = []
-    for line in lines:
-        stripped = line.strip()
-        # Stop if line looks like natural language (no SQL keywords, starts with capital word + space)
-        if sql_lines and stripped and not any(
-            kw in stripped.upper() for kw in [
-                "SELECT", "FROM", "WHERE", "JOIN", "ON", "GROUP", "ORDER",
-                "HAVING", "INNER", "LEFT", "RIGHT", "OUTER", "TOP", "AS",
-                "AND", "OR", "BY", "DESC", "ASC", "COUNT", "SUM", "AVG",
-                "MAX", "MIN", "DISTINCT", "WITH", "UNION", "[", ")", "("
-            ]
-        ) and re.match(r'^[A-Z][a-z]', stripped):
-            break
-        sql_lines.append(line)
-
-    return "\n".join(sql_lines).strip()
 
 def convert_limit_to_top(sql: str):
     match = re.search(r"LIMIT\s+(\d+)", sql, re.IGNORECASE)
@@ -624,9 +602,9 @@ def convert_limit_to_top(sql: str):
     return sql
 
 def is_safe_sql(sql: str):
-    forbidden = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER"]
-    sql_upper = sql.upper()
-    return sql_upper.startswith("SELECT") and not any(f in sql_upper for f in forbidden)
+    forbidden = ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "EXEC", "TRUNCATE"]
+    sql_stripped = sql.strip().upper()
+    return sql_stripped.startswith("SELECT") and not any(f in sql_stripped for f in forbidden)
 
 
 def execute_sql(sql: str):
@@ -943,7 +921,8 @@ def is_db_question(question: str):
         "database size", "db size", "size of db", "size of database",
         "database name", "db name", "what is the db", "what is the database",
         "what db", "tell me about the db", "tell me about the database",
-        "database info", "db info", "database overview", "db overview"
+        "database info", "db info", "database overview", "db overview",
+        "what tables are", "show tables", "list tables"
     ])
 
 
@@ -1017,7 +996,10 @@ def is_row_query(question: str):
     return any(phrase in q for phrase in [
         "show me", "show top", "show all", "get top", "get me",
         "top ", "fetch", "list all", "display", "give me",
-        "first ", "last ", "select", "rows", "records"
+        "first ", "last ", "select", "rows", "records",
+        "per order", "per customer", "per product", "per category",
+        "each order", "each customer", "each product", "each category",
+        "all orders", "all customers", "all products"
     ])
 
 
@@ -1079,8 +1061,11 @@ def generate_sql_all_tables(question: str):
         except Exception:
             fk_info = "  (FK info unavailable)"
 
-        prompt = f"""
-You are a Microsoft SQL Server expert. Given the full database schema and FK relationships, write a SQL query.
+        # Build alias map for prompt
+        alias_map = {table: f"t{i+1}" for i, table in enumerate(all_tables)}
+        alias_info = "\n".join(f"  {alias} = [{table}]" for table, alias in alias_map.items())
+
+        prompt = f"""You are a Microsoft SQL Server expert. Write ONE complete SQL query.
 
 DATABASE SCHEMA:
 {schema_text}
@@ -1088,14 +1073,17 @@ DATABASE SCHEMA:
 FOREIGN KEY RELATIONSHIPS (ONLY valid JOIN paths):
 {fk_info}
 
+TABLE ALIASES (use these EXACTLY, never mix table names and aliases):
+{alias_info}
+
 STRICT RULES:
+- Write ONLY one SELECT statement — no repetition, no loops
 - Use ONLY the FK relationships listed above to JOIN tables
-- NEVER join tables that don't have a direct FK relationship
-- Use table aliases (t1, t2, t3...) with FROM [Table1] AS t1
-- ALWAYS use alias.[ColumnName] format — NEVER [Table].[Column]
-- Use TOP N instead of LIMIT
-- Wrap all column/table names in square brackets
-- Return ONLY the SQL query starting with SELECT. No explanation.
+- ALWAYS use alias.[ColumnName] — NEVER TableName.[Column] or [Table].[Column]
+- Never mix table names and aliases in the same query
+- Use TOP 100 instead of LIMIT (no TOP 1 unless asking for single value)
+- Stop after the final column in SELECT — do NOT repeat columns
+- Return ONLY the SQL. Start with SELECT. Stop immediately after the last line of SQL.
 
 Question: {question}
 SQL:"""
@@ -1106,25 +1094,92 @@ SQL:"""
                 "model": "llama3",
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": 0, "num_predict": 300}
+                "options": {"temperature": 0, "num_predict": 250, "stop": ["\n\n", "Question:", "--"]}
             },
             timeout=120
         )
 
         raw_sql = response.json().get("response", "").strip()
         sql = clean_sql_output(raw_sql)
+
+        # If LLM gave explanation instead of SQL — retry with stricter prompt
+        if not sql.strip().upper().startswith("SELECT"):
+            print("LLM gave explanation, retrying with strict prompt...")
+            strict_prompt = f"""Write ONLY a Microsoft SQL Server SELECT query. No explanation. No text. Start with SELECT.
+
+Schema:
+{schema_text}
+
+FK Relationships:
+{fk_info}
+
+Question: {question}
+
+SELECT"""
+            retry_response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": "llama3",
+                    "prompt": strict_prompt,
+                    "stream": False,
+                    "options": {"temperature": 0, "num_predict": 200, "stop": ["\n\n", "Note:", "This"]}
+                },
+                timeout=120
+            )
+            retry_raw = retry_response.json().get("response", "").strip()
+            # LLM already starts with SELECT since we prefixed it — don't add again
+            if not retry_raw.upper().startswith("SELECT"):
+                retry_raw = "SELECT " + retry_raw
+            sql = clean_sql_output(retry_raw)
         sql = fix_top_position(sql)
         sql = fix_bracket_dot_notation(sql)
         sql = convert_limit_to_top(sql)
         sql = sql.rstrip(";")
         sql = sql.replace("[[", "[").replace("]]", "]")
 
+        # Fix: replace TableName.[col] or TableName.col with correct alias
+        for table, alias in alias_map.items():
+            # Replace [TableName].[col] → alias.[col]
+            sql = re.sub(rf'\[{re.escape(table)}\]\.', f'{alias}.', sql, flags=re.IGNORECASE)
+            # Replace TableName.[col] → alias.[col]
+            sql = re.sub(rf'\b{re.escape(table)}\.\[', f'{alias}.[', sql, flags=re.IGNORECASE)
+            # Replace TableName.col → alias.col
+            sql = re.sub(rf'\b{re.escape(table)}\.(\w+)', lambda m, a=alias: f'{a}.{m.group(1)}', sql, flags=re.IGNORECASE)
+
+        # Fix: truncate SQL if LLM repeated itself
+        from_match = re.search(r'\bFROM\b', sql, re.IGNORECASE)
+        if from_match:
+            after_from = sql[from_match.start():]
+            second_select = re.search(r'\bSELECT\b', after_from[5:], re.IGNORECASE)
+            if second_select:
+                cut_pos = from_match.start() + 5 + second_select.start()
+                sql = sql[:cut_pos].rstrip().rstrip(",")
+
+        # Fix trailing comma before FROM
+        sql = re.sub(r",\s*\n?\s*FROM\b", "\nFROM", sql, flags=re.IGNORECASE)
+
         print("All-tables SQL:", sql)
+        print("SQL starts with:", repr(sql[:30]))
 
         if not is_safe_sql(sql):
+            print("BLOCKED SQL:", sql[:200])
             return {"error": "Unsafe SQL blocked"}
 
-        df = execute_sql(sql)
+        try:
+            df = execute_sql(sql)
+        except Exception as e1:
+            print("All-tables SQL error:", repr(e1))
+            # Retry: strip unnecessary JOINs — keep only FROM clause main table
+            sql_retry = re.sub(r'\b(INNER|LEFT|RIGHT|FULL)?\s*JOIN\b.*?(?=\bWHERE\b|\bGROUP\b|\bORDER\b|\bHAVING\b|$)',
+                               '', sql, flags=re.IGNORECASE | re.DOTALL)
+            sql_retry = sql_retry.strip()
+            print("Retry SQL (no JOIN):", sql_retry)
+            try:
+                df = execute_sql(sql_retry)
+            except Exception as e2:
+                print("Retry also failed:", repr(e2))
+                return {"error": str(e1)}
+
         print("Rows returned:", len(df))
 
         if df.empty:
@@ -1295,13 +1350,19 @@ def try_smart_multitable(question: str):
             ]
 
         q = question.lower()
+        q_normalized = q.replace(" ", "_").replace("-", "_")  # normalize spaces
         table_schemas = {t: get_table_schema(t) for t in all_tables}
 
         # Find relevant tables by name or column mention in question
         relevant_tables = []
         for table, schema in table_schemas.items():
             col_names = [col.lower() for col, _ in schema]
-            if table.lower() in q or any(col in q for col in col_names):
+            table_lower = table.lower()
+            table_normalized = table_lower.replace("_", " ")  # order_items → order items
+            if (table_lower in q or
+                table_normalized in q or
+                table_lower in q_normalized or
+                any(col in q for col in col_names)):
                 relevant_tables.append(table)
 
         if len(relevant_tables) < 2:
@@ -1577,6 +1638,16 @@ async def chat(body: dict = Body(...)):
         if not question:
             return {"error": "Empty question"}
 
+        # ---- EARLY SAFETY CHECK — block dangerous keywords immediately ----
+        danger_keywords = ["alter", "drop", "delete", "truncate", "insert", "update", "exec", "execute"]
+        q_lower = question.lower().strip()
+        if any(re.search(rf'\b{kw}\b', q_lower) for kw in danger_keywords):
+            return {
+                "reply": "⛔ This action is not allowed. Only SELECT queries are permitted.",
+                "chart": None,
+                "table_data": None
+            }
+
         # ---- DB-level question: answer from INFORMATION_SCHEMA, no table needed ----
         if is_db_question(question):
             return {
@@ -1585,6 +1656,31 @@ async def chat(body: dict = Body(...)):
             }
 
         if not active_filename:
+            # Handle schema/structure questions about specific tables
+            if any(p in question.lower() for p in [
+                "what columns", "what fields", "show columns", "describe",
+                "schema of", "structure of", "columns in", "fields in",
+                "schema", "structure", "columns", "fields"
+            ]):
+                # Find ALL tables mentioned in question
+                with engine.connect() as conn:
+                    all_tables = [row[0] for row in conn.execute(text(
+                        "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE'"
+                    ))]
+                mentioned_tables = [
+                    t for t in all_tables if t.lower() in question.lower()
+                ]
+                if mentioned_tables:
+                    reply = ""
+                    for mentioned_table in mentioned_tables:
+                        schema = get_table_schema(mentioned_table)
+                        col_list = "\n".join(f"  - **{col}** ({dtype})" for col, dtype in schema)
+                        reply += f"**{mentioned_table}** table has {len(schema)} columns:\n\n{col_list}\n\n---\n\n"
+                    return {
+                        "reply": reply.strip(),
+                        "chart": None
+                    }
+
             # No table selected — try smart multitable across ALL tables
             multi_table_result = try_smart_multitable(question)
             if multi_table_result:
@@ -1624,6 +1720,12 @@ async def chat(body: dict = Body(...)):
         )
         sql = sql.rstrip(";")
         sql = sql.replace("[[", "[").replace("]]", "]")
+
+        # Fix: if question asks "per X" or "each X", don't limit to TOP 1
+        per_keywords = ["per order", "per customer", "per product", "per category",
+                        "each order", "each customer", "each product", "per month", "per day"]
+        if any(kw in question.lower() for kw in per_keywords):
+            sql = re.sub(r"SELECT\s+TOP\s+1\b", "SELECT TOP 100", sql, flags=re.IGNORECASE)
 
         print("Generated SQL:", sql)
 
