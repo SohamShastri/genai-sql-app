@@ -1009,8 +1009,8 @@ function App() {
                 </div>
               )}
 
-              <div className={`message ${msg.sender}`}>
-                {/* Timestamp + sender name */}
+              <div className="msg-col">
+                {/* Timestamp + sender name — OUTSIDE bubble */}
                 <div className="msg-meta">
                   {msg.sender === "user" ? (
                     <>
@@ -1024,6 +1024,8 @@ function App() {
                     </>
                   )}
                 </div>
+
+              <div className={`message ${msg.sender}`}>
 
               {/* JOIN result */}
               {msg.isJoin && msg.sender === "bot" ? (
@@ -1144,27 +1146,25 @@ function App() {
                 </div>
               )}
 
-              </div>
-              {msg.sender === "user" && (
-                <div className="msg-avatar user-avatar">
-                  <span>{(authUser?.username || "U")[0].toUpperCase()}</span>
-                </div>
-              )}
+              </div>{/* end .message */}
+              </div>{/* end .msg-col */}
             </div>
           ))}
 
           {activeChat?.loading && (
             <div className="message-wrapper bot">
               <div className="msg-avatar bot-avatar"><span>⚡</span></div>
-              <div className="message bot thinking-bubble">
+              <div className="msg-col">
                 <div className="msg-meta">
                   <span className="msg-sender">GenAI Assistant</span>
                   <span className="msg-time">now</span>
                 </div>
-                <div className="thinking-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+                <div className="message bot thinking-bubble">
+                  <div className="thinking-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
                 </div>
               </div>
             </div>

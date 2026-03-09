@@ -292,8 +292,9 @@ body::before {
 }
 
 .db-card-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
+  letter-spacing: 0.1px;
   color: var(--accent);
   margin-bottom: 2px;
 }
@@ -304,6 +305,7 @@ body::before {
 
 .db-card-meta {
   font-size: 11px;
+  font-weight: 500;
   color: var(--text2);
 }
 
@@ -503,6 +505,19 @@ body::before {
 
 .message-wrapper.user {
   flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-items: flex-end;
+}
+
+.msg-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-wrapper.user .msg-col {
+  align-items: flex-end;
+  width: 65%;
 }
 
 .msg-avatar {
@@ -542,8 +557,9 @@ body::before {
 .msg-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 5px;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 0 4px;
 }
 
 .message-wrapper.user .msg-meta {
@@ -590,11 +606,13 @@ body::before {
 .message.user {
   background: linear-gradient(135deg, rgba(108,99,255,0.14), rgba(139,92,246,0.1));
   color: var(--text);
-  max-width: 70%;
+  width: fit-content;
+  max-width: 100%;
   border-radius: 12px 0 12px 12px;
   font-weight: 600;
   border: 1px solid rgba(108,99,255,0.22);
   font-size: 13.5px;
+  word-break: break-word;
 }
 
 [data-theme="light"] .message.user {
@@ -1093,32 +1111,36 @@ body::before {
 .result-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13.5px;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 }
 
 .result-table thead tr {
-  background: var(--accent);
-  color: #fff;
+  background: var(--surface3);
+  color: var(--text2);
   position: sticky;
   top: 0;
   z-index: 1;
+  border-bottom: 2px solid var(--accent);
 }
 
 .result-table th {
-  padding: 9px 14px;
+  padding: 10px 16px;
   text-align: left;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   white-space: nowrap;
+  color: var(--muted2);
 }
 
 .result-table td {
-  padding: 8px 14px;
+  padding: 10px 16px;
   white-space: nowrap;
   color: var(--text);
-  max-width: 200px;
+  font-size: 13.5px;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   border-bottom: 1px solid var(--border);
@@ -1126,23 +1148,18 @@ body::before {
 }
 
 .result-table .td-num {
-  color: var(--green);
-  font-weight: 600;
+  color: var(--text);
+  font-weight: 400;
 }
 
-.row-even { background: var(--surface); }
-.row-odd  { background: var(--surface2); }
+.row-even { background: var(--bg); }
+.row-odd  { background: var(--surface); }
 
 .result-table tbody tr:hover td {
-  background: var(--surface3);
+  background: var(--surface2);
 }
 
-/* Cyber — neon glow on numbers */
-[data-theme="cyber"] .td-num {
-  color: var(--green);
-  text-shadow: 0 0 8px rgba(0,255,180,0.5);
-}
-
+/* Cyber theme */
 [data-theme="cyber"] .result-table thead tr {
   background: var(--surface3);
   border-bottom: 1px solid var(--accent);
@@ -1150,12 +1167,10 @@ body::before {
 
 [data-theme="cyber"] .result-table th {
   color: var(--accent);
-  text-shadow: 0 0 8px rgba(0,255,180,0.4);
 }
 
 /* Purple theme */
-[data-theme="purple"] .result-table thead tr { background: var(--accent); }
-[data-theme="purple"] .td-num { color: var(--accent); }
+[data-theme="purple"] .result-table thead tr { border-bottom-color: var(--accent); }
 
 /* ══════════════════════════════════════════
    SIDEBAR — logo icon, collapse, profile
