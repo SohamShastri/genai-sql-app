@@ -67,10 +67,12 @@ function isJoinQuery(text) {
   return false;
 }
 
-// ---- Renders a result table ----
+// ---- Renders a result table — fully themed ----
 function ResultTable({ tableData }) {
   if (!tableData) return null;
   const { columns, rows } = tableData;
+
+  const isNumeric = (val) => !isNaN(parseFloat(val)) && isFinite(val);
 
   const exportCSV = () => {
     const header = columns.join(",");
@@ -78,30 +80,19 @@ function ResultTable({ tableData }) {
       row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
     ).join("\n");
     const blob = new Blob([header + "\n" + body], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
+    link.href = URL.createObjectURL(blob);
     link.download = `export-${Date.now()}.csv`;
     link.click();
-    URL.revokeObjectURL(url);
   };
 
   const exportExcel = () => {
     import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs").then(XLSX => {
       const wsData = [columns, ...rows.map(r => r.map(c => String(c)))];
       const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-      // Style header row bold
-      columns.forEach((_, i) => {
-        const cell = ws[XLSX.utils.encode_cell({ r: 0, c: i })];
-        if (cell) cell.s = { font: { bold: true } };
-      });
-
-      // Auto column width
       ws["!cols"] = columns.map((col, i) => ({
         wch: Math.max(col.length, ...rows.map(r => String(r[i] ?? "").length), 10)
       }));
-
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Results");
       XLSX.writeFile(wb, `export-${Date.now()}.xlsx`);
@@ -109,60 +100,35 @@ function ResultTable({ tableData }) {
   };
 
   return (
-    <div style={{ maxWidth: "100%", overflow: "hidden" }}>
-      {/* Export buttons */}
-      <div style={{ display: "flex", gap: "8px", marginTop: "10px", marginBottom: "4px" }}>
-        <button onClick={exportCSV} style={{
-          background: "none", border: "1px solid #16a34a", borderRadius: "6px",
-          padding: "3px 10px", fontSize: "11px", color: "#16a34a", cursor: "pointer",
-          display: "flex", alignItems: "center", gap: "4px"
-        }}>
-          ⬇️ CSV
-        </button>
-        <button onClick={exportExcel} style={{
-          background: "none", border: "1px solid #0891b2", borderRadius: "6px",
-          padding: "3px 10px", fontSize: "11px", color: "#0891b2", cursor: "pointer",
-          display: "flex", alignItems: "center", gap: "4px"
-        }}>
-          📊 Excel
-        </button>
-        <span style={{ fontSize: "11px", color: "#94a3b8", alignSelf: "center" }}>
+    <div className="result-table-wrap">
+      {/* Top bar: row count + export buttons */}
+      <div className="result-table-topbar">
+        <span className="result-table-meta">
+          <span className="result-dot" />
           {rows.length} rows · {columns.length} cols
         </span>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <button onClick={exportCSV} className="export-btn csv-btn">📋 CSV</button>
+          <button onClick={exportExcel} className="export-btn xls-btn">📊 Excel</button>
+        </div>
       </div>
 
-      <div className="table-scroll-wrapper" style={{
-        overflowX: "auto",
-        overflowY: "auto",
-        borderRadius: "8px",
-        border: "1px solid #e2e8f0",
-        maxHeight: "320px",
-        width: "100%",
-        display: "block"
-      }}>
-        <table style={{ borderCollapse: "collapse", fontSize: "12px", tableLayout: "auto" }}>
+      <div className="result-table-scroll">
+        <table className="result-table">
           <thead>
-            <tr style={{ background: "#4f46e5", color: "#fff", position: "sticky", top: 0 }}>
+            <tr>
               {columns.map((col, i) => (
-                <th key={i} style={{
-                  padding: "8px 10px", textAlign: "left",
-                  fontWeight: 600, whiteSpace: "nowrap",
-                  minWidth: "120px", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis"
-                }} title={col}>{col}</th>
+                <th key={i} title={col}>{col.replace(/_/g, " ").toUpperCase()}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, ri) => (
-              <tr key={ri} style={{
-                background: ri % 2 === 0 ? "#fff" : "#f8fafc",
-                borderBottom: "1px solid #e2e8f0"
-              }}>
+              <tr key={ri} className={ri % 2 === 0 ? "row-even" : "row-odd"}>
                 {row.map((cell, ci) => (
-                  <td key={ci} style={{
-                    padding: "7px 10px", whiteSpace: "nowrap", color: "#334155",
-                    minWidth: "120px", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis"
-                  }} title={String(cell)}>{String(cell)}</td>
+                  <td key={ci} className={isNumeric(cell) ? "td-num" : ""} title={String(cell)}>
+                    {String(cell)}
+                  </td>
                 ))}
               </tr>
             ))}
@@ -268,6 +234,21 @@ function JoinBadge({ joinKey, table1, table2, rows, allCommonKeys }) {
 }
 
 // ---- SQL Snippet display ----
+function highlightSQL(sql) {
+  const keywords = /\b(SELECT|FROM|WHERE|JOIN|ON|GROUP BY|ORDER BY|HAVING|INNER|LEFT|RIGHT|OUTER|AS|AND|OR|NOT|IN|IS|NULL|TOP|DISTINCT|WITH|UNION|BY|DESC|ASC|COUNT|SUM|AVG|MAX|MIN|CASE|WHEN|THEN|ELSE|END)\b/g;
+  const tables   = /\b([A-Z][a-z_]+(?:_[a-z]+)*)\b(?=\s+(?:AS\s+\w+|\w+)?\s*(?:JOIN|ON|WHERE|GROUP|ORDER|INNER|LEFT|RIGHT|,|$))/g;
+  const aliases  = /\b(t\d+|[a-z]{1,3})\./g;
+  const funcs    = /\b(GETDATE|COALESCE|ISNULL|CAST|CONVERT|LEN|UPPER|LOWER|TRIM|ROUND|FLOOR|CEIL|ABS)\s*\(/g;
+  const nums     = /\b(\d+(\.\d+)?)\b/g;
+
+  return sql
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(keywords, '<span class="sql-kw">$1</span>')
+    .replace(funcs,    '<span class="sql-fn">$1</span>(')
+    .replace(aliases,  '<span class="sql-alias">$1</span>.')
+    .replace(nums,     '<span class="sql-num">$1</span>');
+}
+
 function SqlSnippet({ sql }) {
   const [show, setShow] = useState(false);
 
@@ -275,30 +256,15 @@ function SqlSnippet({ sql }) {
     <div style={{ marginTop: "8px" }}>
       <button
         onClick={() => setShow(v => !v)}
-        style={{
-          background: "none",
-          border: "1px solid #cbd5e1",
-          borderRadius: "5px",
-          padding: "3px 10px",
-          fontSize: "11px",
-          color: "#64748b",
-          cursor: "pointer"
-        }}
+        className="sql-toggle-btn"
       >
         {show ? "Hide SQL ▲" : "Show SQL ▼"}
       </button>
       {show && (
-        <pre style={{
-          marginTop: "6px",
-          background: "#1e293b",
-          color: "#7dd3fc",
-          borderRadius: "8px",
-          padding: "12px",
-          fontSize: "12px",
-          overflowX: "auto",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word"
-        }}>{sql}</pre>
+        <pre
+          className="sql-block"
+          dangerouslySetInnerHTML={{ __html: highlightSQL(sql) }}
+        />
       )}
     </div>
   );
@@ -502,60 +468,46 @@ function InfoTooltip({ darkMode }) {
   const [show, setShow] = React.useState(false);
 
   const keywords = [
-    { category: "📊 Charts", items: ["plot", "chart", "graph", "visualize", "bar chart", "pie chart", "line chart"] },
-    { category: "🔢 Aggregation", items: ["top", "highest", "lowest", "average", "total", "count", "sum", "max", "min"] },
-    { category: "📋 Listing", items: ["show", "list", "display", "give me", "fetch", "get me"] },
-    { category: "📝 Summary", items: ["summary", "summarize", "overview", "analyze"] },
-    { category: "🔗 JOIN", items: ["join X to Y", "combine X and Y", "merge X with Y"] },
-    { category: "🗄️ DB Info", items: ["what tables", "schema of", "columns in", "describe", "how many tables", "db size"] },
-    { category: "🧠 Follow-up (RAG)", items: ["their", "these", "those", "them", "now show", "also show", "filter", "sort", "add", "include"] },
-    { category: "⛔ Blocked", items: ["alter", "delete", "drop", "insert", "update", "truncate"] },
+    { category: "Charts",        dot: "var(--accent)",  items: ["plot", "chart", "graph", "visualize", "bar chart", "pie chart", "line chart"] },
+    { category: "Aggregation",   dot: "var(--green)",   items: ["top", "highest", "lowest", "average", "total", "count", "sum", "max", "min"] },
+    { category: "Listing",       dot: "var(--amber)",   items: ["show", "list", "display", "give me", "fetch", "get me"] },
+    { category: "Summary",       dot: "var(--accent2)", items: ["summary", "summarize", "overview", "analyze"] },
+    { category: "JOIN",          dot: "var(--accent3)", items: ["join X to Y", "combine X and Y", "merge X with Y"] },
+    { category: "DB Info",       dot: "var(--accent)",  items: ["what tables", "schema of", "columns in", "describe", "how many tables", "db size"] },
+    { category: "Follow-up",     dot: "var(--accent2)", items: ["their", "these", "those", "them", "now show", "also show", "filter", "sort", "add", "include"] },
+    { category: "🚫 Blocked",   dot: "var(--red)",     items: ["alter", "delete", "drop", "insert", "update", "truncate"] },
   ];
 
-  const bg = darkMode ? "#1e293b" : "#ffffff";
-  const border = darkMode ? "#334155" : "#e2e8f0";
-  const titleColor = darkMode ? "#f1f5f9" : "#1e293b";
-  const categoryColor = darkMode ? "#94a3b8" : "#64748b";
-  const tagBg = darkMode ? "#334155" : "#f1f5f9";
-  const tagColor = darkMode ? "#e2e8f0" : "#334155";
-  const footerColor = darkMode ? "#64748b" : "#94a3b8";
-  const footerBorder = darkMode ? "#334155" : "#e2e8f0";
+  const bg = "var(--surface2)";
+  const border = "var(--border2)";
+  const titleColor = "var(--text)";
+  const categoryColor = "var(--muted2)";
+  const tagBg = "var(--surface3)";
+  const tagColor = "var(--text)";
+  const footerColor = "var(--muted)";
+  const footerBorder = "var(--border2)";
 
   return (
     <div style={{ position: "relative" }}>
       <button
         onClick={() => setShow(v => !v)}
-        style={{
-          background: show ? "#6366f1" : "none",
-          border: "1.5px solid #6366f1",
-          borderRadius: "50%",
-          width: "28px",
-          height: "28px",
-          cursor: "pointer",
-          fontSize: "13px",
-          color: show ? "#ffffff" : "#6366f1",
-          fontWeight: "bold",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "all 0.2s",
-        }}
+        className={"keyword-btn" + (show ? " active" : "")}
       >
-        ℹ
+        💡 Keywords
       </button>
 
       {show && (
         <div style={{
           position: "absolute",
-          top: "36px",
+          top: "42px",
           right: "0",
-          width: "320px",
+          width: "300px",
           background: bg,
           border: `1px solid ${border}`,
           borderRadius: "12px",
           padding: "14px",
           zIndex: 9999,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
             <div style={{ fontSize: "13px", fontWeight: 700, color: titleColor }}>
@@ -567,18 +519,22 @@ function InfoTooltip({ darkMode }) {
             }}>✕</button>
           </div>
           {keywords.map((group, i) => (
-            <div key={i} style={{ marginBottom: "10px" }}>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: categoryColor, marginBottom: "4px" }}>
+            <div key={i} style={{ marginBottom: "12px" }}>
+              <div style={{ fontSize: "10px", fontWeight: 700, color: categoryColor, marginBottom: "6px", textTransform: "uppercase", letterSpacing: "1px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: group.dot, display: "inline-block", flexShrink: 0 }} />
                 {group.category}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
                 {group.items.map((kw, j) => (
                   <span key={j} style={{
-                    background: tagBg,
-                    color: tagColor,
-                    borderRadius: "6px",
-                    padding: "2px 8px",
+                    background: group.category.includes("Blocked") ? "rgba(239,68,68,0.08)" : tagBg,
+                    color: group.category.includes("Blocked") ? "rgba(248,113,113,0.5)" : tagColor,
+                    border: group.category.includes("Blocked") ? "1px solid rgba(248,113,113,0.2)" : "1px solid var(--border)",
+                    borderRadius: "5px",
+                    padding: "3px 8px",
                     fontSize: "11px",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    cursor: group.category.includes("Blocked") ? "not-allowed" : "default",
                   }}>
                     {kw}
                   </span>
@@ -596,9 +552,10 @@ function InfoTooltip({ darkMode }) {
 }
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem("darkMode") === "true";
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("theme") || "dark";
   });
+  const darkMode = theme === "dark" || theme === "cyber";
 
   const [authUser, setAuthUser] = useState(() => {
     const token = localStorage.getItem("token");
@@ -691,9 +648,11 @@ function App() {
   }, [chats]);
 
   useEffect(() => {
-    document.body.classList.toggle("dark", darkMode);
-    localStorage.setItem("darkMode", darkMode);
-  }, [darkMode]);
+    document.documentElement.setAttribute("data-theme", theme);
+    // keep body.dark for any legacy CSS
+    document.body.classList.toggle("dark", theme === "dark" || theme === "cyber");
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     authFetch("http://localhost:8000/tables")
@@ -979,45 +938,42 @@ function App() {
 
         {/* Header */}
         <header className="topbar">
-          <div className="model-name">
-            GenAI SQL Assistant
+          <div className="topbar-left">
+            <div className="topbar-title">SQL Assistant</div>
             {dbInfo && (
-              <span style={{ marginLeft: "12px", fontSize: "12px", color: "#aaa" }}>
-                | DB: {dbInfo.database || "N/A"}
-                | Tables: {dbInfo.total_tables || 0}
-                | Size: {dbInfo.size_mb || "N/A"} MB
-              </span>
+              <div className="topbar-badges">
+                <div className="topbar-badge"><span className="badge-label">DB:</span><span className="badge-val">{dbInfo.database || "N/A"}</span></div>
+                <div className="topbar-badge"><span className="badge-label">Tables:</span><span className="badge-val">{dbInfo.total_tables || 0}</span></div>
+                <div className="topbar-badge"><span className="badge-label">Size:</span><span className="badge-val">{dbInfo.size_mb || "N/A"} MB</span></div>
+              </div>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {/* Info tooltip */}
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{
-                fontSize: "12px",
-                color: darkMode ? "#94a3b8" : "#64748b",
-                fontWeight: 500,
-                whiteSpace: "nowrap"
-              }}>
-                Special Keyword Info
-              </span>
-              <InfoTooltip darkMode={darkMode} />
+          <div className="topbar-right">
+            {/* Theme Switcher */}
+            <div className="theme-switcher">
+              {[
+                { id: "dark",   icon: "🌑", label: "Dark"   },
+                { id: "light",  icon: "☀️", label: "Light"  },
+                { id: "cyber",  icon: "⚡", label: "Cyber"  },
+                { id: "purple", icon: "🌸", label: "Purple" },
+              ].map(t => (
+                <button
+                  key={t.id}
+                  className={"theme-btn" + (theme === t.id ? " active" : "")}
+                  data-t={t.id}
+                  data-label={t.label}
+                  onClick={() => setTheme(t.id)}
+                >
+                  {t.icon}
+                </button>
+              ))}
             </div>
-            {/* Dark mode toggle */}
-            <button
-              onClick={() => setDarkMode(v => !v)}
-              style={{
-                background: darkMode ? "#374151" : "#f3f4f6",
-                border: "1px solid " + (darkMode ? "#4b5563" : "#d1d5db"),
-                borderRadius: "20px",
-                padding: "6px 14px",
-                cursor: "pointer",
-                fontSize: "14px",
-                color: darkMode ? "#f9fafb" : "#111827",
-                transition: "all 0.2s",
-              }}
-            >
-              {darkMode ? "☀️ Light" : "🌙 Dark"}
-            </button>
+            {/* Keywords button */}
+            <InfoTooltip darkMode={darkMode} />
+            {/* Avatar */}
+            {authUser && (
+              <div className="avatar">{(authUser.username || "U")[0].toUpperCase()}</div>
+            )}
           </div>
         </header>
 
@@ -1026,20 +982,10 @@ function App() {
 
           {activeChat?.messages.length === 0 && (
             <div className="empty">
-              <div>Upload data and start chatting 👇</div>
-              <div style={{
-                marginTop: "12px",
-                fontSize: "13px",
-                color: "#94a3b8",
-                background: "#f8fafc",
-                borderRadius: "8px",
-                padding: "12px 16px",
-                border: "1px solid #e2e8f0",
-                maxWidth: "420px",
-                textAlign: "left"
-              }}>
-                <b>💡 Try JOIN queries:</b>
-                <ul style={{ margin: "6px 0 0 16px", padding: 0, lineHeight: "1.8" }}>
+              <div className="empty-title">Upload data and start chatting 👇</div>
+              <div className="join-hint-card">
+                <div className="join-hint-heading">💡 Try JOIN queries:</div>
+                <ul className="join-hint-list">
                   <li>join Orders to Customers</li>
                   <li>join Order_items with Products</li>
                   <li>combine Orders and Customers</li>
@@ -1050,7 +996,34 @@ function App() {
           )}
 
           {activeChat?.messages.map((msg, index) => (
-            <div key={index} className={`message ${msg.sender}`}>
+            <div key={index} className={`message-wrapper ${msg.sender}`}>
+              {/* Avatar */}
+              {msg.sender === "bot" && (
+                <div className="msg-avatar bot-avatar">
+                  <span>⚡</span>
+                </div>
+              )}
+              {msg.sender === "user" && authUser && (
+                <div className="msg-avatar user-avatar">
+                  {(authUser.username || "U")[0].toUpperCase()}
+                </div>
+              )}
+
+              <div className={`message ${msg.sender}`}>
+                {/* Timestamp + sender name */}
+                <div className="msg-meta">
+                  {msg.sender === "user" ? (
+                    <>
+                      <span className="msg-time">{new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span>
+                      <span className="msg-sender">{authUser?.username || "You"}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="msg-sender">GenAI Assistant</span>
+                      <span className="msg-time">{new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span>
+                    </>
+                  )}
+                </div>
 
               {/* JOIN result */}
               {msg.isJoin && msg.sender === "bot" ? (
@@ -1171,19 +1144,29 @@ function App() {
                 </div>
               )}
 
+              </div>
+              {msg.sender === "user" && (
+                <div className="msg-avatar user-avatar">
+                  <span>{(authUser?.username || "U")[0].toUpperCase()}</span>
+                </div>
+              )}
             </div>
           ))}
 
           {activeChat?.loading && (
-            <div className="message bot" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{
-                display: "inline-block",
-                width: "8px", height: "8px",
-                borderRadius: "50%",
-                background: "#4f46e5",
-                animation: "pulse 1s infinite"
-              }} />
-              AI is thinking...
+            <div className="message-wrapper bot">
+              <div className="msg-avatar bot-avatar"><span>⚡</span></div>
+              <div className="message bot thinking-bubble">
+                <div className="msg-meta">
+                  <span className="msg-sender">GenAI Assistant</span>
+                  <span className="msg-time">now</span>
+                </div>
+                <div className="thinking-dots">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1245,11 +1228,11 @@ function App() {
             </div>
 
             <button className="load-btn" onClick={handleLoadTable}>
-              Load
+              ⚡ Load
             </button>
 
             <label className="upload-pill">
-              Upload
+              ↑ Upload
               <input
                 type="file"
                 accept=".csv,.xlsx"
@@ -1275,7 +1258,7 @@ function App() {
             onClick={sendMessage}
             disabled={activeChat?.loading}
           >
-            {activeChat?.loading ? "Sending..." : "Send"}
+            ➤
           </button>
 
         </div>

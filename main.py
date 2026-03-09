@@ -493,6 +493,8 @@ async def reset_password(body: dict = Body(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/login")
 async def login(body: dict = Body(...)):
     email = body.get("email", "").strip().lower()
     password = body.get("password", "").strip()

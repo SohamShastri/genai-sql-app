@@ -37,10 +37,7 @@ function Sidebar({
         display: "flex", flexDirection: "column", alignItems: "center",
         transition: "width 0.25s ease",
       }}>
-        <button onClick={() => setCollapsed(false)} title="Open sidebar" style={{
-          background: "none", border: "1px solid #e5e7eb", borderRadius: "6px",
-          cursor: "pointer", fontSize: "14px", padding: "4px 7px", color: "#6b7280",
-        }}>▶</button>
+        <button onClick={() => setCollapsed(false)} title="Open sidebar" className="collapse-btn">▶</button>
       </aside>
     );
   }
@@ -53,22 +50,36 @@ function Sidebar({
 
       {/* Logo + collapse */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
-        <div className="logo" style={{ margin: 0 }}>⚡ GenAI</div>
-        <button onClick={() => setCollapsed(true)} title="Close sidebar" style={{
-          background: "none", border: "1px solid #e5e7eb", borderRadius: "6px",
-          cursor: "pointer", fontSize: "14px", padding: "4px 7px", color: "#6b7280",
-        }}>◀</button>
+        <div className="logo" style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="logo-icon">⚡</div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span className="logo-name">GenAI</span>
+            <span className="logo-sub">SQL</span>
+          </div>
+        </div>
+        <button onClick={() => setCollapsed(true)} title="Close sidebar" className="collapse-btn">◀</button>
       </div>
 
-      {/* DB Info */}
+      {/* ── Connected DB Card ── */}
       {dbInfo && (
-        <div className="db-info">
-          <p>📊 Tables: {dbInfo.total_tables}</p>
+        <div className="db-card">
+          <div className="db-card-label">CONNECTED DB</div>
+          <div className="db-card-name">{dbInfo.database || "N/A"}</div>
+          <div className="db-card-meta">
+            {dbInfo.total_tables} tables · {dbInfo.size_mb || "N/A"} MB
+          </div>
         </div>
       )}
 
       {/* New Chat */}
       <button className="new-chat-btn" onClick={createNewChat}>+ New Chat</button>
+
+      {/* Recent Chats label */}
+      <div style={{
+        fontSize: "10px", fontWeight: 700, letterSpacing: "1px",
+        textTransform: "uppercase", color: "var(--muted, #94a3b8)",
+        marginBottom: "8px", paddingLeft: "4px"
+      }}>Recent Chats</div>
 
       {/* Chat List */}
       <div className="chat-list" style={{ flex: 1, overflowY: "auto" }}>
@@ -87,7 +98,7 @@ function Sidebar({
             }}>
               {chat.title}
             </span>
-            {hoveredId === chat.id && (
+            {hoveredId === chat.id ? (
               <button
                 onClick={(e) => { e.stopPropagation(); deleteChat(chat.id); }}
                 style={{
@@ -96,7 +107,9 @@ function Sidebar({
                 }}
                 title="Delete chat"
               >🗑️</button>
-            )}
+            ) : chat.messages?.length > 0 ? (
+              <span className="chat-count">{chat.messages.length}</span>
+            ) : null}
           </div>
         ))}
       </div>
@@ -105,11 +118,9 @@ function Sidebar({
       {chats.length > 0 && (
         <div style={{ paddingTop: "12px" }}>
           {!showClearConfirm ? (
-            <button onClick={() => setShowClearConfirm(true)} style={{
-              width: "100%", padding: "8px", borderRadius: "8px",
-              border: "1px solid #ef4444", background: "transparent",
-              color: "#ef4444", fontSize: "12px", cursor: "pointer",
-            }}>🗑️ Clear All History</button>
+            <button onClick={() => setShowClearConfirm(true)} className="clear-history-btn">
+              🗑️ Clear All History
+            </button>
           ) : (
             <div style={{ fontSize: "12px", textAlign: "center" }}>
               <div style={{ marginBottom: "8px", color: "#ef4444" }}>Are you sure?</div>
@@ -118,83 +129,50 @@ function Sidebar({
                   flex: 1, padding: "6px", borderRadius: "6px",
                   background: "#ef4444", color: "white", border: "none", cursor: "pointer", fontSize: "12px"
                 }}>Yes</button>
-                <button onClick={() => setShowClearConfirm(false)} style={{
-                  flex: 1, padding: "6px", borderRadius: "6px",
-                  background: "#e5e7eb", color: "#111827", border: "none", cursor: "pointer", fontSize: "12px"
-                }}>No</button>
+                <button onClick={() => setShowClearConfirm(false)} className="confirm-no-btn">No</button>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ---- Bottom: Profile + Download + Logout ---- */}
+      {/* ── Bottom: Profile + Download + Logout ── */}
       {authUser && (
-        <div style={{
-          borderTop: "1px solid #e5e7eb",
-          marginTop: "12px",
-          paddingTop: "12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "8px",
-        }}>
-          {/* Avatar + name */}
+        <div className="sidebar-profile">
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
-            <div style={{
-              width: "34px", height: "34px", borderRadius: "50%",
-              background: "#4f46e5", flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "14px", fontWeight: 700, color: "white"
-            }}>
+            <div className="profile-avatar">
               {authUser.username?.charAt(0)?.toUpperCase() || "U"}
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{
                 fontSize: "13px", fontWeight: 600,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                color: "var(--text, #1a1b2e)"
               }}>
                 {authUser.username}
               </div>
-              <div style={{ fontSize: "11px", color: "#94a3b8" }}>Free plan</div>
+              <div style={{ fontSize: "11px", color: "var(--muted, #94a3b8)" }}>Free plan</div>
             </div>
           </div>
 
-          {/* Download chat button */}
           <button
             onClick={downloadChat}
             title="Download this chat"
             disabled={!activeChat?.messages?.length}
-            style={{
-              background: "none", border: "1px solid #e5e7eb", borderRadius: "8px",
-              padding: "6px 8px", cursor: activeChat?.messages?.length ? "pointer" : "not-allowed",
-              fontSize: "15px", color: "#64748b", flexShrink: 0,
-              opacity: activeChat?.messages?.length ? 1 : 0.4,
-              position: "relative",
-            }}
+            className="icon-btn"
+            style={{ opacity: activeChat?.messages?.length ? 1 : 0.4 }}
           >
             ⬇️
             {activeChat?.messages?.length > 0 && (
               <span style={{
                 position: "absolute", top: "3px", right: "3px",
                 width: "6px", height: "6px", borderRadius: "50%",
-                background: "#3b82f6",
+                background: "var(--accent, #4f46e5)",
               }} />
             )}
           </button>
 
-          {/* Logout button */}
-          <button
-            onClick={onLogout}
-            title="Logout"
-            style={{
-              background: "none", border: "1px solid #e5e7eb", borderRadius: "8px",
-              padding: "6px 8px", cursor: "pointer", fontSize: "15px",
-              color: "#ef4444", flexShrink: 0,
-            }}
-          >
-            ⏻
-          </button>
+          <button onClick={onLogout} title="Logout" className="icon-btn logout-btn">⏻</button>
         </div>
       )}
 
